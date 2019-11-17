@@ -37,7 +37,7 @@ label_smoothing = {'cifar10': 0.1, 'cifar100': 0.01, 'svhn': 0.1}
 report = AccuracyReport()
 
 # Set TF random seed to improve reproducibility
-superseed = 15101985
+superseed = 123456789
 rand_gen = np.random.RandomState(superseed)
 tf.set_random_seed(superseed)
 

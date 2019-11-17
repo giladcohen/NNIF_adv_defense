@@ -17,19 +17,18 @@ import os
 import imageio
 from tqdm import tqdm
 
-import darkon.darkon as darkon
+import darkon
 
 from cleverhans.attacks import FastGradientMethod, DeepFool, SaliencyMapMethod, CarliniWagnerL2
 from tensorflow.python.platform import flags
 from cleverhans.loss import CrossEntropy, WeightDecay, WeightedSum
-from tensorflow_TB.lib.models.darkon_replica_model import DarkonReplica
+from NNIF_adv_defense.models.darkon_resnet34_model import DarkonReplica
 from cleverhans.utils import AccuracyReport, set_log_level
 from cleverhans.utils_tf import model_eval
-from tensorflow_TB.utils.misc import one_hot
+from NNIF_adv_defense.utils import one_hot
 from sklearn.neighbors import NearestNeighbors
 import matplotlib.pyplot as plt
-from tensorflow_TB.lib.datasets.influence_feeder_val_test import MyFeederValTest
-from tensorflow_TB.utils.misc import np_evaluate
+from NNIF_adv_defense.datasets.influence_feeder import MyFeederValTest
 import pickle
 from cleverhans.utils import random_targets
 from cleverhans.evaluation import batch_eval
@@ -50,9 +49,6 @@ flags.DEFINE_bool('backward', False, 'going from the last to to first')
 flags.DEFINE_bool('overwrite_A', False, 'whether or not to overwrite the A calculation')
 flags.DEFINE_bool('overwrite_C', False, 'whether or not to overwrite the C calculation')
 
-flags.DEFINE_string('mode', 'null', 'to bypass pycharm bug')
-flags.DEFINE_string('port', 'null', 'to bypass pycharm bug')
-
 if FLAGS.set == 'val':
     test_val_set = True
     WORKSPACE = 'influence_workspace_validation'
@@ -68,24 +64,13 @@ if FLAGS.cases == 'all':
 else:
     ALLOWED_CASES = [FLAGS.cases]
 
-if FLAGS.dataset == 'cifar10':
-    _classes = (
-        'airplane',
-        'car',
-        'bird',
-        'cat',
-        'deer',
-        'dog',
-        'frog',
-        'horse',
-        'ship',
-        'truck'
-    )
-    ARCH_NAME = 'model1'
-    CHECKPOINT_NAME = 'cifar10/log_080419_b_125_wd_0.0004_mom_lr_0.1_f_0.9_p_3_c_2_val_size_1000'
-    LABEL_SMOOTHING = 0.1
-elif FLAGS.dataset == 'cifar100':
-    _classes = (
+TARGETED = FLAGS.attack != 'deepfool'  # we use targeted attacks everywhere except deepfool
+
+_classes = {
+    'cifar10': (
+        'airplane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck'
+    ),
+    'cifar100': (
         'apple', 'aquarium_fish', 'baby', 'bear', 'beaver', 'bed', 'bee', 'beetle',
         'bicycle', 'bottle', 'bowl', 'boy', 'bridge', 'bus', 'butterfly', 'camel',
         'can', 'castle', 'caterpillar', 'cattle', 'chair', 'chimpanzee', 'clock',
@@ -100,25 +85,20 @@ elif FLAGS.dataset == 'cifar100':
         'spider', 'squirrel', 'streetcar', 'sunflower', 'sweet_pepper', 'table',
         'tank', 'telephone', 'television', 'tiger', 'tractor', 'train', 'trout',
         'tulip', 'turtle', 'wardrobe', 'whale', 'willow_tree', 'wolf', 'woman', 'worm'
-    )
-    ARCH_NAME = 'model_cifar_100'
-    CHECKPOINT_NAME = 'cifar100/log_300419_b_125_wd_0.0004_mom_lr_0.1_f_0.9_p_3_c_2_val_size_1000_ls_0.01'
-    LABEL_SMOOTHING = 0.01
-elif FLAGS.dataset == 'svhn':
-    _classes = (
+    ),
+    'svhn': (
         '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
     )
-    ARCH_NAME = 'model_svhn'
-    CHECKPOINT_NAME = 'svhn_mini/log_300519_b_125_wd_0.0004_mom_lr_0.1_f_0.9_p_3_c_2_val_size_1000_exp1'
-    LABEL_SMOOTHING = 0.1
-else:
-    raise AssertionError('dataset {} not supported'.format(FLAGS.dataset))
+}
+ARCH_NAME = FLAGS.dataset + '_model'
+CHECKPOINT_NAME = os.path.join(FLAGS.dataset, 'trained_model')
+LABEL_SMOOTHING = {'cifar10': 0.1, 'cifar100': 0.01, 'svhn': 0.1}
 
 # Object used to keep track of (and return) key accuracies
 report = AccuracyReport()
 
 # Set TF random seed to improve reproducibility
-superseed = 15101985
+superseed = 123456789
 rand_gen = np.random.RandomState(superseed)
 tf.set_random_seed(superseed)
 
@@ -130,10 +110,10 @@ config_args = dict(allow_soft_placement=True)
 sess = tf.Session(config=tf.ConfigProto(**config_args))
 
 # get records from training
-model_dir     = os.path.join('/data/gilad/logs/influence', CHECKPOINT_NAME)
+model_dir     = CHECKPOINT_NAME
 workspace_dir = os.path.join(model_dir, WORKSPACE)
 attack_dir    = os.path.join(model_dir, FLAGS.attack)
-if FLAGS.targeted:
+if TARGETED:
     attack_dir = attack_dir + '_targeted'
 
 # make sure the attack dir is constructed
@@ -157,7 +137,7 @@ y_train_sparse         = y_train.argmax(axis=-1).astype(np.int32)
 y_val_sparse           = y_val.argmax(axis=-1).astype(np.int32)
 y_test_sparse          = y_test.argmax(axis=-1).astype(np.int32)
 
-if FLAGS.targeted:
+if TARGETED:
     # get also the adversarial labels of the val and test sets
     if not os.path.isfile(os.path.join(attack_dir, 'y_val_targets.npy')):
         y_val_targets  = random_targets(y_val_sparse , feeder.num_classes)
@@ -185,7 +165,7 @@ preds      = model.get_predicted_class(x)
 logits     = model.get_logits(x)
 embeddings = model.get_embeddings(x)
 
-loss = CrossEntropy(model, smoothing=LABEL_SMOOTHING)
+loss = CrossEntropy(model, smoothing=LABEL_SMOOTHING[FLAGS.dataset])
 regu_losses = WeightDecay(model)
 full_loss = WeightedSum(model, [(1.0, loss), (FLAGS.weight_decay, regu_losses)])
 
@@ -215,7 +195,11 @@ else:
     train_preds_file    = os.path.join(model_dir, 'x_train_preds.npy')
     train_features_file = os.path.join(model_dir, 'x_train_features.npy')
 if not os.path.isfile(train_preds_file):
-    x_train_preds, x_train_features = np_evaluate(sess, [preds, embeddings], X_train, y_train, x, y, FLAGS.batch_size, log=logging)
+    tf_inputs    = [x, y]
+    tf_outputs   = [preds, embeddings]
+    numpy_inputs = [X_train, y_train]
+
+    x_train_preds, x_train_features = batch_eval(sess, tf_inputs, tf_outputs, numpy_inputs, FLAGS.batch_size)
     x_train_preds = x_train_preds.astype(np.int32)
     np.save(train_preds_file, x_train_preds)
     np.save(train_features_file, x_train_features)
@@ -279,7 +263,7 @@ if not os.path.exists(os.path.join(attack_dir, 'X_val_adv.npy')):
         'clip_max': 1.0,
         'eps': 0.1
     }
-    if FLAGS.targeted:
+    if TARGETED:
         jsma_params.update({'y_target': y_adv})
         cw_params.update({'y_target': y_adv})
         fgsm_param.update({'y_target': y_adv})
@@ -309,7 +293,7 @@ if not os.path.exists(os.path.join(attack_dir, 'X_val_adv.npy')):
     tf_inputs    = [x, y]
     tf_outputs   = [adv_x, preds_adv, embeddings_adv]
     numpy_inputs = [X_val, y_val]
-    if FLAGS.targeted:
+    if TARGETED:
         tf_inputs.append(y_adv)
         numpy_inputs.append(y_val_targets)
 
@@ -323,7 +307,7 @@ if not os.path.exists(os.path.join(attack_dir, 'X_val_adv.npy')):
     tf_inputs    = [x, y]
     tf_outputs   = [adv_x, preds_adv, embeddings_adv]
     numpy_inputs = [X_test, y_test]
-    if FLAGS.targeted:
+    if TARGETED:
         tf_inputs.append(y_adv)
         numpy_inputs.append(y_test_targets)
 
