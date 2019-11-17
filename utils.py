@@ -21,15 +21,24 @@ def load_svhn():
     if not os.path.exists(datadir):
         os.makedirs(datadir)
 
-    gdown.download('https://drive.google.com/uc?id=1G1_onGVI9OKRN9ANMS2kKX5_OkN2Pqjd', os.path.join(datadir, 'X_train.npy'), quiet=False)
-    gdown.download('https://drive.google.com/uc?id=1ijYnRSTB7S2zctjUax2ycW-TgK7Ux2cG', os.path.join(datadir, 'y_train.npy'), quiet=False)
-    gdown.download('https://drive.google.com/uc?id=1TVhS8ns7fPrtUdLZ2nYUsGtRUQT9yaKC', os.path.join(datadir, 'X_test.npy'), quiet=False)
-    gdown.download('https://drive.google.com/uc?id=1ySH19ynJmXLsAfjec0mHfdptduRGCgb2', os.path.join(datadir, 'y_test.npy'), quiet=False)
+    X_train_path = os.path.join(datadir, 'X_train.npy')
+    y_train_path = os.path.join(datadir, 'y_train.npy')
+    X_test_path  = os.path.join(datadir, 'X_test.npy')
+    y_test_path  = os.path.join(datadir, 'y_test.npy')
 
-    X_train = np.load(os.path.join(datadir, 'X_train.npy'))
-    y_train = np.load(os.path.join(datadir, 'y_train.npy'))
-    X_test  = np.load(os.path.join(datadir, 'X_test.npy'))
-    y_test  = np.load(os.path.join(datadir, 'y_test.npy'))
+    if not os.path.exists(X_train_path):
+        gdown.download('https://drive.google.com/uc?id=1G1_onGVI9OKRN9ANMS2kKX5_OkN2Pqjd', os.path.join(datadir, 'X_train.npy'), quiet=False)
+    if not os.path.exists(y_train_path):
+        gdown.download('https://drive.google.com/uc?id=1ijYnRSTB7S2zctjUax2ycW-TgK7Ux2cG', os.path.join(datadir, 'y_train.npy'), quiet=False)
+    if not os.path.exists(X_test_path):
+        gdown.download('https://drive.google.com/uc?id=1TVhS8ns7fPrtUdLZ2nYUsGtRUQT9yaKC', os.path.join(datadir, 'X_test.npy'), quiet=False)
+    if not os.path.exists(y_test_path):
+        gdown.download('https://drive.google.com/uc?id=1ySH19ynJmXLsAfjec0mHfdptduRGCgb2', os.path.join(datadir, 'y_test.npy'), quiet=False)
+
+    X_train = np.load(X_train_path)
+    y_train = np.load(y_train_path)
+    X_test  = np.load(X_test_path)
+    y_test  = np.load(y_test_path)
 
     return (X_train, y_train), (X_test, y_test)
 
