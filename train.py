@@ -35,31 +35,6 @@ ARCH_NAME = FLAGS.dataset + '_model'
 checkpoint_name = os.path.join(FLAGS.dataset, 'trained_model')  # consider change this string in case you want several
                                                                 # trained models with the same dataset
 label_smoothing = {'cifar10': 0.1, 'cifar100': 0.01, 'svhn': 0.1}
-_classes = \
-    {
-        'cifar10': (
-            'airplane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck'
-        ),
-        'cifar100': (
-            'apple', 'aquarium_fish', 'baby', 'bear', 'beaver', 'bed', 'bee', 'beetle',
-            'bicycle', 'bottle', 'bowl', 'boy', 'bridge', 'bus', 'butterfly', 'camel',
-            'can', 'castle', 'caterpillar', 'cattle', 'chair', 'chimpanzee', 'clock',
-            'cloud', 'cockroach', 'couch', 'crab', 'crocodile', 'cup', 'dinosaur',
-            'dolphin', 'elephant', 'flatfish', 'forest', 'fox', 'girl', 'hamster',
-            'house', 'kangaroo', 'keyboard', 'lamp', 'lawn_mower', 'leopard', 'lion',
-            'lizard', 'lobster', 'man', 'maple_tree', 'motorcycle', 'mountain', 'mouse',
-            'mushroom', 'oak_tree', 'orange', 'orchid', 'otter', 'palm_tree', 'pear',
-            'pickup_truck', 'pine_tree', 'plain', 'plate', 'poppy', 'porcupine',
-            'possum', 'rabbit', 'raccoon', 'ray', 'road', 'rocket', 'rose',
-            'sea', 'seal', 'shark', 'shrew', 'skunk', 'skyscraper', 'snail', 'snake',
-            'spider', 'squirrel', 'streetcar', 'sunflower', 'sweet_pepper', 'table',
-            'tank', 'telephone', 'television', 'tiger', 'tractor', 'train', 'trout',
-            'tulip', 'turtle', 'wardrobe', 'whale', 'willow_tree', 'wolf', 'woman', 'worm'
-        ),
-        'svhn': (
-            '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-        )
-    }
 
 # Object used to keep track of (and return) key accuracies
 report = AccuracyReport()
@@ -130,7 +105,7 @@ fgsm_params = {
 
 model = DarkonReplica(scope=ARCH_NAME, nb_classes=feeder.num_classes, n=5, input_shape=[32, 32, 3])
 logits = model.get_logits(x)
-loss = CrossEntropy(model, smoothing=FLAGS.label_smoothing)
+loss = CrossEntropy(model, smoothing=label_smoothing[FLAGS.dataset])
 regu_losses = WeightDecay(model)
 full_loss = WeightedSum(model, [(1.0, loss), (FLAGS.weight_decay, regu_losses)])
 
