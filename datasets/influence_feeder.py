@@ -103,8 +103,7 @@ class MyFeederValTest(darkon.InfluenceFeeder):
             (_, _), (data, label) = tf.keras.datasets.cifar100.load_data()
             data = data.astype(np.float32)
         elif dataset == 'svhn':
-            data  = np.load(os.path.join(SVHN_PATH, 'X_test.npy'))
-            label = np.load(os.path.join(SVHN_PATH, 'y_test.npy'))
+            (_, _), (data, label) = load_svhn()
             data = data.astype(np.float32)
         else:
             raise AssertionError('dataset {} not supported'.format(dataset))
