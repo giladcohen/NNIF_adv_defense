@@ -15,7 +15,6 @@ import numpy as np
 import tensorflow as tf
 import os
 
-from cleverhans.attacks import FastGradientMethod
 from cleverhans.augmentation import random_horizontal_flip, random_shift
 from tensorflow.python.platform import flags
 from cleverhans.loss import CrossEntropy, WeightDecay, WeightedSum
