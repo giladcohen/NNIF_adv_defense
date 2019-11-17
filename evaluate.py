@@ -4,7 +4,6 @@ from __future__ import print_function
 from __future__ import unicode_literals
 
 import matplotlib
-import platform
 
 # Force matplotlib to not use any Xwindows backend.
 # if platform.system() == 'Linux':
@@ -35,34 +34,23 @@ from cleverhans.evaluation import batch_eval
 
 FLAGS = flags.FLAGS
 
-flags.DEFINE_integer('batch_size', 125, 'Size of training batches')
-flags.DEFINE_float('weight_decay', 0.0004, 'weight decay')
+flags.DEFINE_integer('batch_size', 125, 'Size of evaluating batches')
 flags.DEFINE_string('dataset', 'cifar10', 'datasset: cifar10/100 or svhn')
 flags.DEFINE_string('set', 'val', 'val or test set to evaluate')
-flags.DEFINE_bool('prepare', False, 'whether or not we are in the prepare phase, when hvp is calculated')
 flags.DEFINE_string('attack', 'deepfool', 'adversarial attack: deepfool, jsma, cw, cw_nnif')
-flags.DEFINE_bool('targeted', False, 'whether or not the adversarial attack is targeted')
-flags.DEFINE_string('cases', 'all', 'can be rither real, pred, or adv')
-flags.DEFINE_integer('b', -1, 'beginning index')
-flags.DEFINE_integer('e', -1, 'ending index')
-flags.DEFINE_bool('backward', False, 'going from the last to to first')
-flags.DEFINE_bool('overwrite_A', False, 'whether or not to overwrite the A calculation')
-flags.DEFINE_bool('overwrite_C', False, 'whether or not to overwrite the C calculation')
+
+# TODO: remove
+flags.DEFINE_string('mode', 'null', 'to bypass pycharm bug')
+flags.DEFINE_string('port', 'null', 'to bypass pycharm bug')
 
 if FLAGS.set == 'val':
-    test_val_set = True
+    test_val_set = True  # evaluating on the validation set
     WORKSPACE = 'influence_workspace_validation'
-    USE_TRAIN_MINI = False
+    USE_TRAIN_MINI = False  # use all the training set examples in evaluation
 else:
-    test_val_set = False
+    test_val_set = False  # evaluating on the
     WORKSPACE = 'influence_workspace_test_mini'
     USE_TRAIN_MINI = True
-
-assert FLAGS.cases in ['all', 'real', 'pred', 'adv']
-if FLAGS.cases == 'all':
-    ALLOWED_CASES = ['real', 'pred', 'adv']
-else:
-    ALLOWED_CASES = [FLAGS.cases]
 
 TARGETED = FLAGS.attack != 'deepfool'  # we use targeted attacks everywhere except deepfool
 
@@ -92,6 +80,7 @@ _classes = {
 }
 ARCH_NAME = FLAGS.dataset + '_model'
 CHECKPOINT_NAME = os.path.join(FLAGS.dataset, 'trained_model')
+weight_decay = 0.0004
 LABEL_SMOOTHING = {'cifar10': 0.1, 'cifar100': 0.01, 'svhn': 0.1}
 
 # Object used to keep track of (and return) key accuracies
@@ -120,12 +109,26 @@ if TARGETED:
 if not os.path.exists(attack_dir):
     os.makedirs(attack_dir)
 
+val_indices = np.load(os.path.join(model_dir, 'val_indices.npy'))
+
 mini_train_inds = None
 if USE_TRAIN_MINI:
-    print('loading train mini indices from {}'.format(os.path.join(model_dir, 'train_mini_indices.npy')))
-    mini_train_inds = np.load(os.path.join(model_dir, 'train_mini_indices.npy'))
+    train_mini_indices_path = os.path.join(model_dir, 'train_mini_indices.npy')
+    if not os.path.exists(train_mini_indices_path):
+        print('Creating train mini indices for the test set...')
+        # first, we need to create a temporary feeder to fetch all the training samples indices (not validation)
+        tmp_feeder = MyFeederValTest(dataset=FLAGS.dataset, rand_gen=rand_gen, as_one_hot=True, val_inds=val_indices,
+                                     test_val_set=True, mini_train_inds=None)
+        train_inds = tmp_feeder.train_inds
+        random_inds = rand_gen.choice(train_inds, 5000, replace=False)  # collecting features for 5000 random training
+                                                                        # samples (instead of 49k) due to time complexity
+        random_inds.sort()
+        np.save(train_mini_indices_path, random_inds)
+        del tmp_feeder
+    else:
+        print('loading train mini indices from {}'.format(train_mini_indices_path))
+        mini_train_inds = np.load(train_mini_indices_path)
 
-val_indices = np.load(os.path.join(model_dir, 'val_indices.npy'))
 feeder = MyFeederValTest(dataset=FLAGS.dataset, rand_gen=rand_gen, as_one_hot=True, val_inds=val_indices,
                          test_val_set=test_val_set, mini_train_inds=mini_train_inds)
 
@@ -167,20 +170,7 @@ embeddings = model.get_embeddings(x)
 
 loss = CrossEntropy(model, smoothing=LABEL_SMOOTHING[FLAGS.dataset])
 regu_losses = WeightDecay(model)
-full_loss = WeightedSum(model, [(1.0, loss), (FLAGS.weight_decay, regu_losses)])
-
-def do_eval(preds, x_set, y_set, report_key, is_adv=None):
-    acc = model_eval(sess, x, y, preds, x_set, y_set, args=eval_params)
-    setattr(report, report_key, acc)
-    if is_adv is None:
-        report_text = None
-    elif is_adv:
-        report_text = 'adversarial'
-    else:
-        report_text = 'legitimate'
-    if report_text:
-        print('Test accuracy on %s examples: %0.4f' % (report_text, acc))
-    return acc
+full_loss = WeightedSum(model, [(1.0, loss), (weight_decay, regu_losses)])
 
 # loading the checkpoint
 saver = tf.train.Saver()
@@ -253,7 +243,7 @@ if not os.path.exists(os.path.join(attack_dir, 'X_val_adv.npy')):
     cw_params = {
         'clip_min': 0.0,
         'clip_max': 1.0,
-        'batch_size': 125,
+        'batch_size': 100,  # NOTE: you might need to reduce the batch size if your GPU has low memory.
         'confidence': 0.8,
         'learning_rate': 0.01,
         'initial_const': 0.1
@@ -324,13 +314,6 @@ else:
     x_test_preds_adv    = np.load(os.path.join(attack_dir, 'x_test_preds_adv.npy'))
     x_test_features_adv = np.load(os.path.join(attack_dir, 'x_test_features_adv.npy'))
 
-# accuracy computation
-# do_eval(logits, X_train, y_train, 'clean_train_clean_eval_trainset', False)
-# do_eval(logits, X_val, y_val, 'clean_train_clean_eval_validationset', False)
-# do_eval(logits, X_test, y_test, 'clean_train_clean_eval_testset', False)
-# do_eval(logits_adv, X_val, y_val, 'clean_train_adv_eval_validationset', True)
-# do_eval(logits_adv, X_test, y_test, 'clean_train_adv_eval_testset', True)
-
 # quick computations
 train_acc    = np.mean(y_train_sparse == x_train_preds)
 val_acc      = np.mean(y_val_sparse   == x_val_preds)
@@ -396,7 +379,7 @@ all_neighbor_dists    , all_neighbor_indices     = knn.kneighbors(features, retu
 print('predicting knn dist/indices for adv image')
 all_neighbor_dists_adv, all_neighbor_indices_adv = knn.kneighbors(features_adv, return_distance=True)
 
-# setting pred feeder
+# setting pred feeder. This is our feeder which is used to generate the features for the natural images
 pred_feeder = MyFeederValTest(dataset=FLAGS.dataset, rand_gen=rand_gen, as_one_hot=True,
                               val_inds=feeder.val_inds, test_val_set=test_val_set, mini_train_inds=mini_train_inds)
 pred_feeder.val_origin_data  = X_val
@@ -406,7 +389,7 @@ pred_feeder.test_origin_data = X_test
 pred_feeder.test_data        = X_test
 pred_feeder.test_label       = one_hot(x_test_preds, feeder.num_classes).astype(np.float32)
 
-# setting adv feeder
+# setting adv feeder. This is our feeder which is used to generate the features for the adv images
 adv_feeder = MyFeederValTest(dataset=FLAGS.dataset, rand_gen=rand_gen, as_one_hot=True,
                              val_inds=feeder.val_inds, test_val_set=test_val_set, mini_train_inds=mini_train_inds)
 adv_feeder.val_origin_data  = X_val_adv
@@ -420,14 +403,6 @@ adv_feeder.test_label       = one_hot(x_test_preds_adv, feeder.num_classes).asty
 feeder.reset()
 pred_feeder.reset()
 adv_feeder.reset()
-
-inspector = darkon.Influence(
-    workspace=os.path.join(workspace_dir, 'real'),
-    feeder=feeder,
-    loss_op_train=full_loss.fprop(x=x, y=y),
-    loss_op_test=loss.fprop(x=x, y=y),
-    x_placeholder=x,
-    y_placeholder=y)
 
 inspector_pred = darkon.Influence(
     workspace=os.path.join(workspace_dir, 'pred'),
@@ -445,6 +420,7 @@ inspector_adv = darkon.Influence(
     x_placeholder=x,
     y_placeholder=y)
 
+# some optimizations for the darkon influence function implementations
 testset_batch_size = 100
 train_batch_size = 200
 train_iterations = 25 if USE_TRAIN_MINI else 245  # 5k(25x200) or 49k(245x200)
@@ -455,19 +431,8 @@ approx_params = {
     'recursion_batch_size': 200
 }
 
-# sub_relevant_indices = [ind for ind in info[FLAGS.set] if info[FLAGS.set][ind]['net_succ'] and info[FLAGS.set][ind]['attack_succ']]
-# sub_relevant_indices = [ind for ind in info[FLAGS.set] if not info[FLAGS.set][ind]['attack_succ']]
 sub_relevant_indices = [ind for ind in info[FLAGS.set]]
 relevant_indices     = [info[FLAGS.set][ind]['global_index'] for ind in sub_relevant_indices]
-
-if FLAGS.b != -1:
-    b, e = FLAGS.b, FLAGS.e
-    sub_relevant_indices = sub_relevant_indices[b:e]
-    relevant_indices     = relevant_indices[b:e]
-
-if FLAGS.backward:
-    sub_relevant_indices = sub_relevant_indices[::-1]
-    relevant_indices     = relevant_indices[::-1]
 
 # calculate knn_ranks
 def find_ranks(sub_index, sorted_influence_indices, adversarial=False):
@@ -521,16 +486,9 @@ for i in tqdm(range(len(sub_relevant_indices))):
     logging.info(progress_str)
     print(progress_str)
 
-    cases = ['real', 'adv']
-    if not info[FLAGS.set][sub_index]['net_succ']:  # if prediction is different than real
-        cases.append('pred')
+    cases = ['pred', 'adv']
     for case in cases:
-        if case == 'real':
-            insp = inspector
-            feed = feeder
-            ni   = all_neighbor_indices
-            nd   = all_neighbor_dists
-        elif case == 'pred':
+        if case == 'pred':
             insp = inspector_pred
             feed = pred_feeder
             ni   = all_neighbor_indices
@@ -540,139 +498,113 @@ for i in tqdm(range(len(sub_relevant_indices))):
             feed = adv_feeder
             ni   = all_neighbor_indices_adv
             nd   = all_neighbor_dists_adv
-        else:
-            raise AssertionError('only real and adv are accepted.')
 
-        if case not in ALLOWED_CASES:
+        # creating the relevant index folders
+        dir = os.path.join(model_dir, FLAGS.set, FLAGS.set + '_index_{}'.format(global_index), case)
+        if case == 'adv':
+            dir = os.path.join(dir, FLAGS.attack)
+        if not os.path.exists(dir):
+            os.makedirs(dir)
+
+        if os.path.exists(os.path.join(dir, 'scores.npy')):
+            print('calcaulation for global index {} was already done. Leaving it'.format(global_index))
             continue
 
-        if FLAGS.prepare:
-            try:
-                insp._prepare(
-                    sess=sess,
-                    test_indices=[sub_index],
-                    test_batch_size=testset_batch_size,
-                    approx_params=approx_params,
-                    force_refresh=FLAGS.overwrite_A
-                )
-            except Exception as e:
-                print('Error with influence _prepare for sub_index={} (global_idex={}): {}. Forcing...'.format(sub_index, global_index, e))
-                insp._prepare(
-                    sess=sess,
-                    test_indices=[sub_index],
-                    test_batch_size=testset_batch_size,
-                    approx_params=approx_params,
-                    force_refresh=True
-                )
-        else:
-            # creating the relevant index folders
-            dir = os.path.join(model_dir, FLAGS.set, FLAGS.set + '_index_{}'.format(global_index), case)
-            if case == 'adv':
-                dir = os.path.join(dir, FLAGS.attack)
-            if not os.path.exists(dir):
-                os.makedirs(dir)
+        scores = insp.upweighting_influence_batch(
+            sess=sess,
+            test_indices=[sub_index],
+            test_batch_size=testset_batch_size,
+            approx_params=approx_params,
+            train_batch_size=train_batch_size,
+            train_iterations=train_iterations)
+        np.save(os.path.join(dir, 'scores.npy'), scores)
 
-            if not FLAGS.overwrite_C and os.path.exists(os.path.join(dir, 'summary.txt')):
-                print('calcaulation for global index {} was already done. Leaving it'.format(global_index))
-                continue
 
-            if os.path.isfile(os.path.join(dir, 'scores.npy')):
-                print('loading scores from {}'.format(os.path.join(dir, 'scores.npy')))
-                scores = np.load(os.path.join(dir, 'scores.npy'))
-            else:
-                scores = insp.upweighting_influence_batch(
-                    sess=sess,
-                    test_indices=[sub_index],
-                    test_batch_size=testset_batch_size,
-                    approx_params=approx_params,
-                    train_batch_size=train_batch_size,
-                    train_iterations=train_iterations)
-                np.save(os.path.join(dir, 'scores.npy'), scores)
+        # Just plotting and extra information. Not mandatory to go over it, but useful for visualization and debugging.
+        print('saving image to {}'.format(os.path.join(dir, 'image.npy/png')))
+        image, _ = feed.test_indices(sub_index)
+        imageio.imwrite(os.path.join(dir, 'image.png'), image)
+        np.save(os.path.join(dir, 'image.npy'), image)
 
-            print('saving image to {}'.format(os.path.join(dir, 'image.npy/png')))
-            image, _ = feed.test_indices(sub_index)
-            imageio.imwrite(os.path.join(dir, 'image.png'), image)
-            np.save(os.path.join(dir, 'image.npy'), image)
+        sorted_indices = np.argsort(scores)
+        harmful = sorted_indices[:50]
+        helpful = sorted_indices[-50:][::-1]
 
-            sorted_indices = np.argsort(scores)
-            harmful = sorted_indices[:50]
-            helpful = sorted_indices[-50:][::-1]
+        # have some figures
+        cnt_harmful_in_knn = 0
+        print('\nHarmful:')
+        for idx in harmful:
+            print('[{}] {}'.format(feed.get_global_index('train', idx), scores[idx]))
+            if idx in ni[sub_index, 0:50]:
+                cnt_harmful_in_knn += 1
+        harmful_summary_str = '{}: {} out of {} harmful images are in the {}-NN\n'.format(case, cnt_harmful_in_knn, len(harmful), 50)
+        print(harmful_summary_str)
 
-            # have some figures
-            cnt_harmful_in_knn = 0
-            print('\nHarmful:')
-            for idx in harmful:
-                print('[{}] {}'.format(feed.get_global_index('train', idx), scores[idx]))
-                if idx in ni[sub_index, 0:50]:
-                    cnt_harmful_in_knn += 1
-            harmful_summary_str = '{}: {} out of {} harmful images are in the {}-NN\n'.format(case, cnt_harmful_in_knn, len(harmful), 50)
-            print(harmful_summary_str)
+        cnt_helpful_in_knn = 0
+        print('\nHelpful:')
+        for idx in helpful:
+            print('[{}] {}'.format(feed.get_global_index('train', idx), scores[idx]))
+            if idx in ni[sub_index, 0:50]:
+                cnt_helpful_in_knn += 1
+        helpful_summary_str = '{}: {} out of {} helpful images are in the {}-NN\n'.format(case, cnt_helpful_in_knn, len(helpful), 50)
+        print(helpful_summary_str)
 
-            cnt_helpful_in_knn = 0
-            print('\nHelpful:')
-            for idx in helpful:
-                print('[{}] {}'.format(feed.get_global_index('train', idx), scores[idx]))
-                if idx in ni[sub_index, 0:50]:
-                    cnt_helpful_in_knn += 1
-            helpful_summary_str = '{}: {} out of {} helpful images are in the {}-NN\n'.format(case, cnt_helpful_in_knn, len(helpful), 50)
-            print(helpful_summary_str)
+        fig, axes1 = plt.subplots(5, 10, figsize=(30, 10))
+        target_idx = 0
+        for j in range(5):
+            for k in range(10):
+                idx = ni[sub_index, target_idx]
+                axes1[j][k].set_axis_off()
+                axes1[j][k].imshow(X_train[idx])
+                label_str = _classes[y_train_sparse[idx]]
+                axes1[j][k].set_title('[{}]: {}'.format(feed.get_global_index('train', idx), label_str))
+                target_idx += 1
+        plt.savefig(os.path.join(dir, 'nearest_neighbors.png'), dpi=350)
+        plt.close()
 
-            fig, axes1 = plt.subplots(5, 10, figsize=(30, 10))
-            target_idx = 0
-            for j in range(5):
-                for k in range(10):
-                    idx = ni[sub_index, target_idx]
-                    axes1[j][k].set_axis_off()
-                    axes1[j][k].imshow(X_train[idx])
-                    label_str = _classes[y_train_sparse[idx]]
-                    axes1[j][k].set_title('[{}]: {}'.format(feed.get_global_index('train', idx), label_str))
-                    target_idx += 1
-            plt.savefig(os.path.join(dir, 'nearest_neighbors.png'), dpi=350)
-            plt.close()
+        helpful_ranks, helpful_dists = find_ranks(sub_index, sorted_indices[-1000:][::-1], case == 'adv')
+        harmful_ranks, harmful_dists = find_ranks(sub_index, sorted_indices[:1000],        case == 'adv')
 
-            helpful_ranks, helpful_dists = find_ranks(sub_index, sorted_indices[-1000:][::-1], case == 'adv')
-            harmful_ranks, harmful_dists = find_ranks(sub_index, sorted_indices[:1000],        case == 'adv')
+        print('saving knn ranks and dists to {}'.format(dir))
+        np.save(os.path.join(dir, 'helpful_ranks.npy'), helpful_ranks)
+        np.save(os.path.join(dir, 'helpful_dists.npy'), helpful_dists)
+        np.save(os.path.join(dir, 'harmful_ranks.npy'), harmful_ranks)
+        np.save(os.path.join(dir, 'harmful_dists.npy'), harmful_dists)
 
-            print('saving knn ranks and dists to {}'.format(dir))
-            np.save(os.path.join(dir, 'helpful_ranks.npy'), helpful_ranks)
-            np.save(os.path.join(dir, 'helpful_dists.npy'), helpful_dists)
-            np.save(os.path.join(dir, 'harmful_ranks.npy'), harmful_ranks)
-            np.save(os.path.join(dir, 'harmful_dists.npy'), harmful_dists)
+        fig, axes1 = plt.subplots(5, 10, figsize=(30, 10))
+        target_idx = 0
+        for j in range(5):
+            for k in range(10):
+                idx = helpful[target_idx]
+                axes1[j][k].set_axis_off()
+                axes1[j][k].imshow(X_train[idx])
+                label_str = _classes[y_train_sparse[idx]]
+                loc_in_knn = np.where(ni[sub_index] == idx)[0][0]
+                axes1[j][k].set_title('[{}]: {} #nn:{}'.format(feed.get_global_index('train', idx), label_str, loc_in_knn))
+                target_idx += 1
+        plt.savefig(os.path.join(dir, 'helpful.png'), dpi=350)
+        plt.close()
 
-            fig, axes1 = plt.subplots(5, 10, figsize=(30, 10))
-            target_idx = 0
-            for j in range(5):
-                for k in range(10):
-                    idx = helpful[target_idx]
-                    axes1[j][k].set_axis_off()
-                    axes1[j][k].imshow(X_train[idx])
-                    label_str = _classes[y_train_sparse[idx]]
-                    loc_in_knn = np.where(ni[sub_index] == idx)[0][0]
-                    axes1[j][k].set_title('[{}]: {} #nn:{}'.format(feed.get_global_index('train', idx), label_str, loc_in_knn))
-                    target_idx += 1
-            plt.savefig(os.path.join(dir, 'helpful.png'), dpi=350)
-            plt.close()
+        fig, axes1 = plt.subplots(5, 10, figsize=(30, 10))
+        target_idx = 0
+        for j in range(5):
+            for k in range(10):
+                idx = harmful[target_idx]
+                axes1[j][k].set_axis_off()
+                axes1[j][k].imshow(X_train[idx])
+                label_str = _classes[y_train_sparse[idx]]
+                loc_in_knn = np.where(ni[sub_index] == idx)[0][0]
+                axes1[j][k].set_title('[{}]: {} #nn:{}'.format(feed.get_global_index('train', idx), label_str, loc_in_knn))
+                target_idx += 1
+        plt.savefig(os.path.join(dir, 'harmful.png'), dpi=350)
+        plt.close()
 
-            fig, axes1 = plt.subplots(5, 10, figsize=(30, 10))
-            target_idx = 0
-            for j in range(5):
-                for k in range(10):
-                    idx = harmful[target_idx]
-                    axes1[j][k].set_axis_off()
-                    axes1[j][k].imshow(X_train[idx])
-                    label_str = _classes[y_train_sparse[idx]]
-                    loc_in_knn = np.where(ni[sub_index] == idx)[0][0]
-                    axes1[j][k].set_title('[{}]: {} #nn:{}'.format(feed.get_global_index('train', idx), label_str, loc_in_knn))
-                    target_idx += 1
-            plt.savefig(os.path.join(dir, 'harmful.png'), dpi=350)
-            plt.close()
-
-            # getting two ranks - one rank for the real label and another rank for the adv label.
-            # what is a "rank"?
-            # A rank is the average nearest neighbor location of all the helpful training indices.
-            with open(os.path.join(dir, 'summary.txt'), 'w+') as f:
-                f.write(harmful_summary_str)
-                f.write(helpful_summary_str)
-                f.write('label ({} -> {}). pred: {}. {} \nhelpful/harmful_rank mean: {}/{}\nhelpful/harmful_dist mean: {}/{}' \
-                        .format(_classes[real_label], _classes[adv_label], _classes[pred_label], case,
-                                helpful_ranks.mean(), harmful_ranks.mean(), helpful_dists.mean(), harmful_dists.mean()))
+        # getting two ranks - one rank for the real label and another rank for the adv label.
+        # what is a "rank"?
+        # A rank is the average nearest neighbor location of all the helpful training indices.
+        with open(os.path.join(dir, 'summary.txt'), 'w+') as f:
+            f.write(harmful_summary_str)
+            f.write(helpful_summary_str)
+            f.write('label ({} -> {}). pred: {}. {} \nhelpful/harmful_rank mean: {}/{}\nhelpful/harmful_dist mean: {}/{}' \
+                    .format(_classes[real_label], _classes[adv_label], _classes[pred_label], case,
+                            helpful_ranks.mean(), harmful_ranks.mean(), helpful_dists.mean(), harmful_dists.mean()))
