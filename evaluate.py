@@ -243,7 +243,7 @@ if not os.path.exists(os.path.join(attack_dir, 'X_val_adv.npy')):
     cw_params = {
         'clip_min': 0.0,
         'clip_max': 1.0,
-        'batch_size': 100,  # NOTE: you might need to reduce the batch size if your GPU has low memory.
+        'batch_size': 125,  # NOTE: you might need to reduce the batch size if your GPU has low memory.
         'confidence': 0.8,
         'learning_rate': 0.01,
         'initial_const': 0.1
