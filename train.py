@@ -32,7 +32,8 @@ flags.DEFINE_integer('batch_size', 125, 'Size of training batches')
 flags.DEFINE_string('dataset', 'svhn', 'dataset: cifar10/100 or svhn')
 
 ARCH_NAME = FLAGS.dataset + '_model'
-checkpoint_name = os.path.join(FLAGS.dataset, 'trained_model')
+checkpoint_name = os.path.join(FLAGS.dataset, 'trained_model')  # consider change this string in case you want several
+                                                                # trained models with the same dataset
 label_smoothing = {'cifar10': 0.1, 'cifar100': 0.01, 'svhn': 0.1}
 _classes = \
     {
@@ -76,7 +77,7 @@ config_args = dict(allow_soft_placement=True)
 sess = tf.Session(config=tf.ConfigProto(**config_args))
 
 feeder = MyFeederValTest(dataset=FLAGS.dataset, rand_gen=rand_gen, as_one_hot=True, test_val_set=True)
-model_dir = FLAGS.checkpoint_name
+model_dir = checkpoint_name
 if not os.path.exists(model_dir):
     os.makedirs(model_dir)
 np.save(os.path.join(model_dir, 'val_indices.npy'), feeder.val_inds)
