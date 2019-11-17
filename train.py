@@ -1,8 +1,5 @@
 """
 Training a basic Resnet 34 network for classification, splitting to train/val/test
-CIFAR-10: log_080419_b_125_wd_0.0004_mom_lr_0.1_f_0.9_p_3_c_2_val_size_1000
-CIFAR-100: log_300419_b_125_wd_0.0004_mom_lr_0.1_f_0.9_p_3_c_2_val_size_1000_ls_0.01
-SVHN: log_300519_b_125_wd_0.0004_mom_lr_0.1_f_0.9_p_3_c_2_val_size_1000_exp1
 """
 
 from __future__ import absolute_import
@@ -33,6 +30,7 @@ flags.DEFINE_string('dataset', 'svhn', 'dataset: cifar10/100 or svhn')
 ARCH_NAME = FLAGS.dataset + '_model'
 checkpoint_name = os.path.join(FLAGS.dataset, 'trained_model')  # consider change this string in case you want several
                                                                 # trained models with the same dataset
+weight_decay = 0.0004
 label_smoothing = {'cifar10': 0.1, 'cifar100': 0.01, 'svhn': 0.1}
 
 # Object used to keep track of (and return) key accuracies
@@ -106,7 +104,7 @@ model = DarkonReplica(scope=ARCH_NAME, nb_classes=feeder.num_classes, n=5, input
 logits = model.get_logits(x)
 loss = CrossEntropy(model, smoothing=label_smoothing[FLAGS.dataset])
 regu_losses = WeightDecay(model)
-full_loss = WeightedSum(model, [(1.0, loss), (FLAGS.weight_decay, regu_losses)])
+full_loss = WeightedSum(model, [(1.0, loss), (weight_decay, regu_losses)])
 
 def do_eval(preds, x_set, y_set, report_key, is_adv=None):
     acc = model_eval(sess, x, y, preds, x_set, y_set, args=eval_params)
