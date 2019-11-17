@@ -8,13 +8,8 @@ import gdown
 import os
 import numpy as np
 
-
 def load_svhn():
     """ Loads SVHN dataset"""
-    # svhn_train = get_file('svhn_X_train.npy', origin='https://drive.google.com/uc?id=1G1_onGVI9OKRN9ANMS2kKX5_OkN2Pqjd')
-    #                       # origin='https://drive.google.com/open?id=1G1_onGVI9OKRN9ANMS2kKX5_OkN2Pqjd')
-    # train_data = sio.loadmat(svhn_train)
-    # X_train, y_train = train_data['X'], train_data['y']
     cache_dir = os.path.join(os.path.expanduser('~'), '.keras')
     datadir_base = os.path.expanduser(cache_dir)
     datadir = os.path.join(datadir_base, 'datasets', 'svhn')
@@ -42,7 +37,14 @@ def load_svhn():
 
     return (X_train, y_train), (X_test, y_test)
 
-
+def one_hot(indices, depth):
+    """Converting the indices to one hot representation
+    :param indices: numpy array
+    :param depth: the depth of the one hot vectors
+    """
+    ohm = np.zeros([indices.shape[0], depth])
+    ohm[np.arange(indices.shape[0]), indices] = 1
+    return ohm
 
 
 

@@ -4,12 +4,11 @@ from __future__ import print_function
 from __future__ import unicode_literals
 
 import numpy as np
-import darkon.darkon as darkon
-from tensorflow_TB.utils.misc import one_hot
+import darkon
+from NNIF_adv_defense.utils import one_hot
 from sklearn.model_selection import train_test_split
 from copy import copy, deepcopy
 import tensorflow as tf
-import os
 from NNIF_adv_defense.utils import load_svhn
 
 class MyFeederValTest(darkon.InfluenceFeeder):
