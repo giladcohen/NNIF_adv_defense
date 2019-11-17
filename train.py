@@ -15,7 +15,7 @@ import os
 from cleverhans.augmentation import random_horizontal_flip, random_shift
 from tensorflow.python.platform import flags
 from cleverhans.loss import CrossEntropy, WeightDecay, WeightedSum
-from tensorflow_TB.lib.models.darkon_replica_model import DarkonReplica
+from NNIF_adv_defense.models.darkon_resnet34_model import DarkonReplica
 from NNIF_adv_defense.trainer import train
 from cleverhans.utils import AccuracyReport, set_log_level
 from cleverhans.utils_tf import model_eval
