@@ -29,7 +29,7 @@ from cleverhans.utils import _ArgsWrapper, create_logger
 from cleverhans.utils import safe_zip
 from cleverhans.utils_tf import infer_devices
 from cleverhans.utils_tf import initialize_uninitialized_global_variables
-from tensorflow_TB.tutorials.reduce_lr_on_plateau import ReduceLROnPlateau
+from NNIF_adv_defense.reduce_lr_on_plateau import ReduceLROnPlateau
 
 _logger = create_logger("train")
 _logger.setLevel(logging.INFO)
