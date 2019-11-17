@@ -481,8 +481,9 @@ for i in tqdm(range(len(sub_relevant_indices))):
 
     progress_str = 'sample {}/{}: calculating scores for {} index {} (sub={}).\n' \
                    'real label: {}, adv label: {}, pred label: {}. net_succ={}, attack_succ={}' \
-        .format(i + 1, len(sub_relevant_indices), FLAGS.set, global_index, sub_index, _classes[real_label],
-                _classes[adv_label], _classes[pred_label], info[FLAGS.set][sub_index]['net_succ'], info[FLAGS.set][sub_index]['attack_succ'])
+        .format(i + 1, len(sub_relevant_indices), FLAGS.set, global_index, sub_index,
+                _classes[FLAGS.dataset][real_label], _classes[FLAGS.dataset][adv_label], _classes[FLAGS.dataset][pred_label],
+                info[FLAGS.set][sub_index]['net_succ'], info[FLAGS.set][sub_index]['attack_succ'])
     logging.info(progress_str)
     print(progress_str)
 
@@ -556,7 +557,7 @@ for i in tqdm(range(len(sub_relevant_indices))):
                 idx = ni[sub_index, target_idx]
                 axes1[j][k].set_axis_off()
                 axes1[j][k].imshow(X_train[idx])
-                label_str = _classes[y_train_sparse[idx]]
+                label_str = _classes[FLAGS.dataset][y_train_sparse[idx]]
                 axes1[j][k].set_title('[{}]: {}'.format(feed.get_global_index('train', idx), label_str))
                 target_idx += 1
         plt.savefig(os.path.join(dir, 'nearest_neighbors.png'), dpi=350)
@@ -578,7 +579,7 @@ for i in tqdm(range(len(sub_relevant_indices))):
                 idx = helpful[target_idx]
                 axes1[j][k].set_axis_off()
                 axes1[j][k].imshow(X_train[idx])
-                label_str = _classes[y_train_sparse[idx]]
+                label_str = _classes[FLAGS.dataset][y_train_sparse[idx]]
                 loc_in_knn = np.where(ni[sub_index] == idx)[0][0]
                 axes1[j][k].set_title('[{}]: {} #nn:{}'.format(feed.get_global_index('train', idx), label_str, loc_in_knn))
                 target_idx += 1
@@ -592,7 +593,7 @@ for i in tqdm(range(len(sub_relevant_indices))):
                 idx = harmful[target_idx]
                 axes1[j][k].set_axis_off()
                 axes1[j][k].imshow(X_train[idx])
-                label_str = _classes[y_train_sparse[idx]]
+                label_str = _classes[FLAGS.dataset][y_train_sparse[idx]]
                 loc_in_knn = np.where(ni[sub_index] == idx)[0][0]
                 axes1[j][k].set_title('[{}]: {} #nn:{}'.format(feed.get_global_index('train', idx), label_str, loc_in_knn))
                 target_idx += 1
@@ -606,5 +607,6 @@ for i in tqdm(range(len(sub_relevant_indices))):
             f.write(harmful_summary_str)
             f.write(helpful_summary_str)
             f.write('label ({} -> {}). pred: {}. {} \nhelpful/harmful_rank mean: {}/{}\nhelpful/harmful_dist mean: {}/{}' \
-                    .format(_classes[real_label], _classes[adv_label], _classes[pred_label], case,
-                            helpful_ranks.mean(), harmful_ranks.mean(), helpful_dists.mean(), harmful_dists.mean()))
+                    .format(_classes[FLAGS.dataset][real_label], _classes[FLAGS.dataset][adv_label],
+                            _classes[FLAGS.dataset][pred_label], case, helpful_ranks.mean(), harmful_ranks.mean(),
+                            helpful_dists.mean(), harmful_dists.mean()))
