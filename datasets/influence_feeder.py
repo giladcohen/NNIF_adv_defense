@@ -12,8 +12,6 @@ import tensorflow as tf
 import os
 from NNIF_adv_defense.utils import load_svhn
 
-SVHN_PATH = '/data/dataset/SVHN_MINI'
-
 class MyFeederValTest(darkon.InfluenceFeeder):
     def __init__(self, dataset, rand_gen, as_one_hot, val_inds=None, test_val_set=False, mini_train_inds=None):
         """

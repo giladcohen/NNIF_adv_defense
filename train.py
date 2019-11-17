@@ -19,7 +19,7 @@ from tensorflow_TB.lib.models.darkon_replica_model import DarkonReplica
 from NNIF_adv_defense.trainer import train
 from cleverhans.utils import AccuracyReport, set_log_level
 from cleverhans.utils_tf import model_eval
-from tensorflow_TB.lib.datasets.influence_feeder_val_test import MyFeederValTest
+from NNIF_adv_defense.datasets.influence_feeder import MyFeederValTest
 
 FLAGS = flags.FLAGS
 
