@@ -27,7 +27,10 @@ flags.DEFINE_integer('nb_epochs', 200, 'Number of epochs to train model')
 flags.DEFINE_integer('batch_size', 125, 'Size of training batches')
 flags.DEFINE_string('dataset', 'svhn', 'dataset: cifar10/100 or svhn')
 
-ARCH_NAME = FLAGS.dataset + '_model'
+# this is the name of the scope of the Resnet34 graph. If the user wants to just load our network parameters
+# and maybe later even use our scores.npy outputs (it takes a long time to compute yourself...), he/she must use
+# these strings. Otherwise, any string is OK. We provide here as default the scope names we used.
+ARCH_NAME = {'cifar10': 'model1', 'cifar100': 'model_cifar_100', 'svhn': 'model_svhn'}
 checkpoint_name = os.path.join(FLAGS.dataset, 'trained_model')  # consider change this string in case you want several
                                                                 # trained models with the same dataset
 weight_decay = 0.0004
@@ -100,7 +103,7 @@ fgsm_params = {
     'clip_max': 1.
 }
 
-model = DarkonReplica(scope=ARCH_NAME, nb_classes=feeder.num_classes, n=5, input_shape=[32, 32, 3])
+model = DarkonReplica(scope=ARCH_NAME[FLAGS.dataset], nb_classes=feeder.num_classes, n=5, input_shape=[32, 32, 3])
 logits = model.get_logits(x)
 loss = CrossEntropy(model, smoothing=label_smoothing[FLAGS.dataset])
 regu_losses = WeightDecay(model)

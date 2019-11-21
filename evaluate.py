@@ -78,7 +78,12 @@ _classes = {
         '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
     )
 }
-ARCH_NAME = FLAGS.dataset + '_model'
+
+# this is the name of the scope of the Resnet34 graph. If the user wants to just load our network parameters
+# and maybe later even use our scores.npy outputs (it takes a long time to compute yourself...), he/she must use
+# these strings. Otherwise, any string is OK. We provide here as default the scope names we used.
+ARCH_NAME = {'cifar10': 'model1', 'cifar100': 'model_cifar_100', 'svhn': 'model_svhn'}
+
 CHECKPOINT_NAME = os.path.join(FLAGS.dataset, 'trained_model')
 weight_decay = 0.0004
 LABEL_SMOOTHING = {'cifar10': 0.1, 'cifar100': 0.01, 'svhn': 0.1}
@@ -163,7 +168,7 @@ y     = tf.placeholder(tf.float32, shape=(None, nb_classes), name='y')
 
 eval_params = {'batch_size': FLAGS.batch_size}
 
-model = DarkonReplica(scope=ARCH_NAME, nb_classes=feeder.num_classes, n=5, input_shape=[32, 32, 3])
+model = DarkonReplica(scope=ARCH_NAME[FLAGS.dataset], nb_classes=feeder.num_classes, n=5, input_shape=[32, 32, 3])
 preds      = model.get_predicted_class(x)
 logits     = model.get_logits(x)
 embeddings = model.get_embeddings(x)
