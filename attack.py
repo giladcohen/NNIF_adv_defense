@@ -87,7 +87,7 @@ _classes = {
     )
 }
 
-# this is the name of the scope of the Resnet34 graph. If the user wants to just load our network parameters
+# this is the name of the scope of the author(s) Resnet34 graph. If the user wants to just load our network parameters
 # and maybe later even use our scores.npy outputs (it takes a long time to compute yourself...), he/she must use
 # these strings. Otherwise, any string is OK. We provide here as default the scope names we used.
 ARCH_NAME = {'cifar10': 'model1', 'cifar100': 'model_cifar_100', 'svhn': 'model_svhn'}
@@ -115,7 +115,7 @@ if FLAGS.checkpoint_dir != '':
     model_dir     = FLAGS.checkpoint_dir                      # set user specified dir
 else:
     model_dir = os.path.join(FLAGS.dataset, 'trained_model')  # set default dir
-    
+
 workspace_dir = os.path.join(model_dir, WORKSPACE)
 attack_dir    = os.path.join(model_dir, FLAGS.attack)
 if TARGETED:

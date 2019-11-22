@@ -135,9 +135,10 @@ train(sess, full_loss, None, None,
       var_list=model.get_params(),
       optimizer='mom')
 
-save_path = os.path.join(model_dir, "model_checkpoint.ckpt")
-saver = tf.train.Saver()
-saver.save(sess, save_path, global_step=tf.train.get_global_step())
+# Uncomment if you want to save the latest model, instead of the best model (in terms of val accuracy)
+# save_path = os.path.join(model_dir, "model_checkpoint.ckpt")
+# saver = tf.train.Saver()
+# saver.save(sess, save_path, global_step=tf.train.get_global_step())
 
 # print best score
 evaluate()
