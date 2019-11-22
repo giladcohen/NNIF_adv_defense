@@ -35,9 +35,9 @@ ARCH_NAME = {'cifar10': 'model1', 'cifar100': 'model_cifar_100', 'svhn': 'model_
 weight_decay = 0.0004
 label_smoothing = {'cifar10': 0.1, 'cifar100': 0.01, 'svhn': 0.1}
 if FLAGS.checkpoint_dir != '':
-    model_dir = os.path.join(FLAGS.dataset, 'trained_model')  # set default dir
-else:
     model_dir     = FLAGS.checkpoint_dir                      # set user specified dir
+else:
+    model_dir = os.path.join(FLAGS.dataset, 'trained_model')  # set default dir
 
 # Object used to keep track of (and return) key accuracies
 report = AccuracyReport()

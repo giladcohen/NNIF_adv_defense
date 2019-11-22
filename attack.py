@@ -112,9 +112,10 @@ sess = tf.Session(config=tf.ConfigProto(**config_args))
 
 # get records from training
 if FLAGS.checkpoint_dir != '':
-    model_dir = os.path.join(FLAGS.dataset, 'trained_model')  # set default dir
-else:
     model_dir     = FLAGS.checkpoint_dir                      # set user specified dir
+else:
+    model_dir = os.path.join(FLAGS.dataset, 'trained_model')  # set default dir
+    
 workspace_dir = os.path.join(model_dir, WORKSPACE)
 attack_dir    = os.path.join(model_dir, FLAGS.attack)
 if TARGETED:
