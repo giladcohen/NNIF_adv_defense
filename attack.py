@@ -1,3 +1,10 @@
+"""
+This code does three things one after the other:
+1) Quickly evaluate the model accuracy performance on a specified dataset (train/validation/test).
+2) Attack the specified dataset subset with a specified attack (only on the first call to this script with the attack).
+3) For each sample in the 'set' subset (val/test), calculate and save the Influence Functions scores I_up_loss
+"""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -23,8 +30,7 @@ from tensorflow.python.platform import flags
 from cleverhans.loss import CrossEntropy, WeightDecay, WeightedSum
 from NNIF_adv_defense.models.darkon_resnet34_model import DarkonReplica
 from cleverhans.utils import AccuracyReport, set_log_level
-from cleverhans.utils_tf import model_eval
-from NNIF_adv_defense.utils import one_hot
+from NNIF_adv_defense.tools.utils import one_hot
 from sklearn.neighbors import NearestNeighbors
 import matplotlib.pyplot as plt
 from NNIF_adv_defense.datasets.influence_feeder import MyFeederValTest
@@ -38,6 +44,8 @@ flags.DEFINE_integer('batch_size', 125, 'Size of evaluating batches')
 flags.DEFINE_string('dataset', 'cifar10', 'datasset: cifar10/100 or svhn')
 flags.DEFINE_string('set', 'val', 'val or test set to evaluate')
 flags.DEFINE_string('attack', 'deepfool', 'adversarial attack: deepfool, jsma, cw, cw_nnif')
+flags.DEFINE_string('checkpoint_dir', '', 'Checkpoint dir, the path to the saved model architecture and weights')
+
 
 # TODO: remove
 flags.DEFINE_string('mode', 'null', 'to bypass pycharm bug')
@@ -84,7 +92,6 @@ _classes = {
 # these strings. Otherwise, any string is OK. We provide here as default the scope names we used.
 ARCH_NAME = {'cifar10': 'model1', 'cifar100': 'model_cifar_100', 'svhn': 'model_svhn'}
 
-CHECKPOINT_NAME = os.path.join(FLAGS.dataset, 'trained_model')
 weight_decay = 0.0004
 LABEL_SMOOTHING = {'cifar10': 0.1, 'cifar100': 0.01, 'svhn': 0.1}
 
@@ -104,7 +111,10 @@ config_args = dict(allow_soft_placement=True)
 sess = tf.Session(config=tf.ConfigProto(**config_args))
 
 # get records from training
-model_dir     = CHECKPOINT_NAME
+if FLAGS.checkpoint_dir != '':
+    model_dir = os.path.join(FLAGS.dataset, 'trained_model')  # set default dir
+else:
+    model_dir     = FLAGS.checkpoint_dir                      # set user specified dir
 workspace_dir = os.path.join(model_dir, WORKSPACE)
 attack_dir    = os.path.join(model_dir, FLAGS.attack)
 if TARGETED:

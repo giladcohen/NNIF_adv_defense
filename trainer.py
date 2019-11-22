@@ -1,14 +1,11 @@
 """
 Multi-replica synchronous training
 
-
-NOTE: This module is much more free to change than many other modules
-in CleverHans. CleverHans is very conservative about changes to any
-code that affects the output of benchmark tests (attacks, evaluation
-methods, etc.). This module provides *model training* functionality
-not *benchmarks* and thus is free to change rapidly to provide better
-speed, accuracy, etc.
+This tool is a copy and paste of the training done in Cleverhans + adding automatic decaying learning rate by accuracy.
+Original code was copied from:
+https://github.com/tensorflow/cleverhans/blob/master/cleverhans/train.py
 """
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -29,7 +26,7 @@ from cleverhans.utils import _ArgsWrapper, create_logger
 from cleverhans.utils import safe_zip
 from cleverhans.utils_tf import infer_devices
 from cleverhans.utils_tf import initialize_uninitialized_global_variables
-from NNIF_adv_defense.reduce_lr_on_plateau import ReduceLROnPlateau
+from NNIF_adv_defense.tools.reduce_lr_on_plateau import ReduceLROnPlateau
 
 _logger = create_logger("train")
 _logger.setLevel(logging.INFO)

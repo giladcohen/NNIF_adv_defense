@@ -5,11 +5,11 @@ from __future__ import unicode_literals
 
 import numpy as np
 import darkon
-from NNIF_adv_defense.utils import one_hot
+from NNIF_adv_defense.tools.utils import one_hot
 from sklearn.model_selection import train_test_split
-from copy import copy, deepcopy
+from copy import deepcopy
 import tensorflow as tf
-from NNIF_adv_defense.utils import load_svhn
+from NNIF_adv_defense.tools.utils import load_svhn
 
 class MyFeederValTest(darkon.InfluenceFeeder):
     def __init__(self, dataset, rand_gen, as_one_hot, val_inds=None, test_val_set=False, mini_train_inds=None):
