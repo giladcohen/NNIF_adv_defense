@@ -26,15 +26,18 @@ FLAGS = flags.FLAGS
 flags.DEFINE_integer('nb_epochs', 200, 'Number of epochs to train model')
 flags.DEFINE_integer('batch_size', 125, 'Size of training batches')
 flags.DEFINE_string('dataset', 'svhn', 'dataset: cifar10/100 or svhn')
+flags.DEFINE_string('checkpoint_dir', '', 'Checkpoint dir, the path to the saved model architecture and weights')
 
 # this is the name of the scope of the Resnet34 graph. If the user wants to just load our network parameters
 # and maybe later even use our scores.npy outputs (it takes a long time to compute yourself...), he/she must use
 # these strings. Otherwise, any string is OK. We provide here as default the scope names we used.
 ARCH_NAME = {'cifar10': 'model1', 'cifar100': 'model_cifar_100', 'svhn': 'model_svhn'}
-checkpoint_name = os.path.join(FLAGS.dataset, 'trained_model')  # consider change this string in case you want several
-                                                                # trained models with the same dataset
 weight_decay = 0.0004
 label_smoothing = {'cifar10': 0.1, 'cifar100': 0.01, 'svhn': 0.1}
+if FLAGS.checkpoint_dir != '':
+    model_dir = os.path.join(FLAGS.dataset, 'trained_model')  # set default dir
+else:
+    model_dir     = FLAGS.checkpoint_dir                      # set user specified dir
 
 # Object used to keep track of (and return) key accuracies
 report = AccuracyReport()
@@ -52,7 +55,7 @@ config_args = dict(allow_soft_placement=True)
 sess = tf.Session(config=tf.ConfigProto(**config_args))
 
 feeder = MyFeederValTest(dataset=FLAGS.dataset, rand_gen=rand_gen, as_one_hot=True, test_val_set=True)
-model_dir = checkpoint_name
+
 if not os.path.exists(model_dir):
     os.makedirs(model_dir)
 np.save(os.path.join(model_dir, 'val_indices.npy'), feeder.val_inds)
