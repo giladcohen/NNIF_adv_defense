@@ -1,8 +1,14 @@
 """
+This code is somewhat similar to attack.py, but allows to calculated the HVP matrices much faster with GPU.
+
+If you have GPU, use this code and run:
+CUDA_VISIBLE_DEVICES=<GPU_ID> NNIF_adv_defense/calc_hvp.py --<flags>...
+I/We noticed a large improvement in computation time with this way.
+
 This code does three things one after the other:
 1) Quickly evaluate the model accuracy performance on a specified dataset (train/validation/test).
 2) Attack the specified dataset subset with a specified attack (only on the first call to this script with the attack).
-3) For each sample in the 'set' subset (val/test), calculate and save the Influence Functions scores I_up_loss
+3) For each sample in the 'set' subset (val/test), calculate its HVP matrix (see darkon implementation for I_up_loss).
 """
 
 from __future__ import absolute_import
@@ -21,7 +27,6 @@ import logging
 import numpy as np
 import tensorflow as tf
 import os
-import imageio
 from tqdm import tqdm
 import darkon
 from cleverhans.attacks import FastGradientMethod, DeepFool, SaliencyMapMethod, CarliniWagnerL2
@@ -31,7 +36,6 @@ from NNIF_adv_defense.models.darkon_resnet34_model import DarkonReplica
 from cleverhans.utils import AccuracyReport, set_log_level
 from NNIF_adv_defense.tools.utils import one_hot
 from sklearn.neighbors import NearestNeighbors
-import matplotlib.pyplot as plt
 from NNIF_adv_defense.datasets.influence_feeder import MyFeederValTest
 import pickle
 from cleverhans.utils import random_targets
@@ -389,10 +393,6 @@ else:
     print('predicting knn for all test set')
     features     = x_test_features
     features_adv = x_test_features_adv
-print('predicting knn dist/indices for normal image')
-all_neighbor_dists    , all_neighbor_indices     = knn.kneighbors(features, return_distance=True)
-print('predicting knn dist/indices for adv image')
-all_neighbor_dists_adv, all_neighbor_indices_adv = knn.kneighbors(features_adv, return_distance=True)
 
 # setting pred feeder. This is our feeder which is used to generate the features for the natural images
 pred_feeder = MyFeederValTest(dataset=FLAGS.dataset, rand_gen=rand_gen, as_one_hot=True,
@@ -437,8 +437,6 @@ inspector_adv = darkon.Influence(
 
 # some optimizations for the darkon influence function implementations
 testset_batch_size = 100
-train_batch_size = 200
-train_iterations = 25 if USE_TRAIN_MINI else 245  # 5k(25x200) or 49k(245x200)
 approx_params = {
     'scale': 200,
     'num_repeats': 5,
@@ -448,27 +446,6 @@ approx_params = {
 
 sub_relevant_indices = [ind for ind in info[FLAGS.set]]
 relevant_indices     = [info[FLAGS.set][ind]['global_index'] for ind in sub_relevant_indices]
-
-# calculate knn_ranks
-def find_ranks(sub_index, sorted_influence_indices, adversarial=False):
-    print('Finding ranks for sub_index={} (adversarial={})'.format(sub_index, adversarial))
-    if adversarial:
-        ni = all_neighbor_indices_adv
-        nd = all_neighbor_dists_adv
-    else:
-        ni = all_neighbor_indices
-        nd = all_neighbor_dists
-
-    ranks = -1 * np.ones(len(sorted_influence_indices), dtype=np.int32)
-    dists = -1 * np.ones(len(sorted_influence_indices), dtype=np.float32)
-    for target_idx in range(ranks.shape[0]):
-        idx = sorted_influence_indices[target_idx]
-        loc_in_knn = np.where(ni[sub_index] == idx)[0][0]
-        knn_dist = nd[sub_index, loc_in_knn]
-        ranks[target_idx] = loc_in_knn
-        dists[target_idx] = knn_dist
-    return ranks, dists
-
 
 for i in tqdm(range(len(sub_relevant_indices))):
     sub_index = sub_relevant_indices[i]
@@ -494,7 +471,7 @@ for i in tqdm(range(len(sub_relevant_indices))):
     if info[FLAGS.set][sub_index]['net_succ']:
         assert pred_label == real_label, 'failed for i={}, sub_index={}, global_index={}'.format(i, sub_index, global_index)
 
-    progress_str = 'sample {}/{}: calculating scores for {} index {} (sub={}).\n' \
+    progress_str = 'sample {}/{}: calculating HVP matrices for {} index {} (sub={}).\n' \
                    'real label: {}, adv label: {}, pred label: {}. net_succ={}, attack_succ={}' \
         .format(i + 1, len(sub_relevant_indices), FLAGS.set, global_index, sub_index,
                 _classes[FLAGS.dataset][real_label], _classes[FLAGS.dataset][adv_label], _classes[FLAGS.dataset][pred_label],
@@ -502,126 +479,23 @@ for i in tqdm(range(len(sub_relevant_indices))):
     logging.info(progress_str)
     print(progress_str)
 
-    cases = ['pred', 'adv']
-    for case in cases:
-        if case == 'pred':
-            insp = inspector_pred
-            feed = pred_feeder
-            ni   = all_neighbor_indices
-            nd   = all_neighbor_dists
-        elif case == 'adv':
-            insp = inspector_adv
-            feed = adv_feeder
-            ni   = all_neighbor_indices_adv
-            nd   = all_neighbor_dists_adv
+    for insp in [inspector_pred, inspector_adv]:
+        try:
+            insp._prepare(
+                sess=sess,
+                test_indices=[sub_index],
+                test_batch_size=testset_batch_size,
+                approx_params=approx_params,
+                force_refresh=False  # Maybe there is already a prior calculation. If so, load its numpy
+            )
+        except Exception as e:
+            print('Error with influence _prepare for sub_index={} (global_idex={}): {}. Forcing...'.format(sub_index, global_index, e))
+            insp._prepare(
+                sess=sess,
+                test_indices=[sub_index],
+                test_batch_size=testset_batch_size,
+                approx_params=approx_params,
+                force_refresh=True
+            )
 
-        # creating the relevant index folders
-        dir = os.path.join(model_dir, FLAGS.set, FLAGS.set + '_index_{}'.format(global_index), case)
-        if case == 'adv':
-            dir = os.path.join(dir, FLAGS.attack)
-        if not os.path.exists(dir):
-            os.makedirs(dir)
-
-        if os.path.exists(os.path.join(dir, 'scores.npy')):
-            print('calcaulation for global index {} was already done. Leaving it'.format(global_index))
-            continue
-
-        scores = insp.upweighting_influence_batch(
-            sess=sess,
-            test_indices=[sub_index],
-            test_batch_size=testset_batch_size,
-            approx_params=approx_params,
-            train_batch_size=train_batch_size,
-            train_iterations=train_iterations)
-        np.save(os.path.join(dir, 'scores.npy'), scores)
-
-
-        # Just plotting and extra information. Not mandatory to go over it, but useful for visualization and debugging.
-        print('saving image to {}'.format(os.path.join(dir, 'image.npy/png')))
-        image, _ = feed.test_indices(sub_index)
-        imageio.imwrite(os.path.join(dir, 'image.png'), image)
-        np.save(os.path.join(dir, 'image.npy'), image)
-
-        sorted_indices = np.argsort(scores)
-        harmful = sorted_indices[:50]
-        helpful = sorted_indices[-50:][::-1]
-
-        # have some figures
-        cnt_harmful_in_knn = 0
-        print('\nHarmful:')
-        for idx in harmful:
-            print('[{}] {}'.format(feed.get_global_index('train', idx), scores[idx]))
-            if idx in ni[sub_index, 0:50]:
-                cnt_harmful_in_knn += 1
-        harmful_summary_str = '{}: {} out of {} harmful images are in the {}-NN\n'.format(case, cnt_harmful_in_knn, len(harmful), 50)
-        print(harmful_summary_str)
-
-        cnt_helpful_in_knn = 0
-        print('\nHelpful:')
-        for idx in helpful:
-            print('[{}] {}'.format(feed.get_global_index('train', idx), scores[idx]))
-            if idx in ni[sub_index, 0:50]:
-                cnt_helpful_in_knn += 1
-        helpful_summary_str = '{}: {} out of {} helpful images are in the {}-NN\n'.format(case, cnt_helpful_in_knn, len(helpful), 50)
-        print(helpful_summary_str)
-
-        fig, axes1 = plt.subplots(5, 10, figsize=(30, 10))
-        target_idx = 0
-        for j in range(5):
-            for k in range(10):
-                idx = ni[sub_index, target_idx]
-                axes1[j][k].set_axis_off()
-                axes1[j][k].imshow(X_train[idx])
-                label_str = _classes[FLAGS.dataset][y_train_sparse[idx]]
-                axes1[j][k].set_title('[{}]: {}'.format(feed.get_global_index('train', idx), label_str))
-                target_idx += 1
-        plt.savefig(os.path.join(dir, 'nearest_neighbors.png'), dpi=350)
-        plt.close()
-
-        helpful_ranks, helpful_dists = find_ranks(sub_index, sorted_indices[-1000:][::-1], case == 'adv')
-        harmful_ranks, harmful_dists = find_ranks(sub_index, sorted_indices[:1000],        case == 'adv')
-
-        print('saving knn ranks and dists to {}'.format(dir))
-        np.save(os.path.join(dir, 'helpful_ranks.npy'), helpful_ranks)
-        np.save(os.path.join(dir, 'helpful_dists.npy'), helpful_dists)
-        np.save(os.path.join(dir, 'harmful_ranks.npy'), harmful_ranks)
-        np.save(os.path.join(dir, 'harmful_dists.npy'), harmful_dists)
-
-        fig, axes1 = plt.subplots(5, 10, figsize=(30, 10))
-        target_idx = 0
-        for j in range(5):
-            for k in range(10):
-                idx = helpful[target_idx]
-                axes1[j][k].set_axis_off()
-                axes1[j][k].imshow(X_train[idx])
-                label_str = _classes[FLAGS.dataset][y_train_sparse[idx]]
-                loc_in_knn = np.where(ni[sub_index] == idx)[0][0]
-                axes1[j][k].set_title('[{}]: {} #nn:{}'.format(feed.get_global_index('train', idx), label_str, loc_in_knn))
-                target_idx += 1
-        plt.savefig(os.path.join(dir, 'helpful.png'), dpi=350)
-        plt.close()
-
-        fig, axes1 = plt.subplots(5, 10, figsize=(30, 10))
-        target_idx = 0
-        for j in range(5):
-            for k in range(10):
-                idx = harmful[target_idx]
-                axes1[j][k].set_axis_off()
-                axes1[j][k].imshow(X_train[idx])
-                label_str = _classes[FLAGS.dataset][y_train_sparse[idx]]
-                loc_in_knn = np.where(ni[sub_index] == idx)[0][0]
-                axes1[j][k].set_title('[{}]: {} #nn:{}'.format(feed.get_global_index('train', idx), label_str, loc_in_knn))
-                target_idx += 1
-        plt.savefig(os.path.join(dir, 'harmful.png'), dpi=350)
-        plt.close()
-
-        # getting two ranks - one rank for the real label and another rank for the adv label.
-        # what is a "rank"?
-        # A rank is the average nearest neighbor location of all the helpful training indices.
-        with open(os.path.join(dir, 'summary.txt'), 'w+') as f:
-            f.write(harmful_summary_str)
-            f.write(helpful_summary_str)
-            f.write('label ({} -> {}). pred: {}. {} \nhelpful/harmful_rank mean: {}/{}\nhelpful/harmful_dist mean: {}/{}' \
-                    .format(_classes[FLAGS.dataset][real_label], _classes[FLAGS.dataset][adv_label],
-                            _classes[FLAGS.dataset][pred_label], case, helpful_ranks.mean(), harmful_ranks.mean(),
-                            helpful_dists.mean(), harmful_dists.mean()))
+print('Done creating all HVP successfully.')
