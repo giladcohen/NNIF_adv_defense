@@ -26,7 +26,7 @@ import tensorflow as tf
 import os
 import imageio
 import darkon
-from cleverhans.attacks import FastGradientMethod, DeepFool, SaliencyMapMethod, CarliniWagnerL2
+from cleverhans.attacks import FastGradientMethod, DeepFool, SaliencyMapMethod, CarliniWagnerL2, MadryEtAl, ElasticNetMethod
 from tensorflow.python.platform import flags
 from cleverhans.loss import CrossEntropy, WeightDecay, WeightedSum
 from NNIF_adv_defense.models.darkon_resnet34_model import DarkonReplica
@@ -41,7 +41,7 @@ from cleverhans.evaluation import batch_eval
 import copy
 from threading import Thread
 from Queue import Queue
-
+import time
 
 FLAGS = flags.FLAGS
 
@@ -50,7 +50,7 @@ flags.DEFINE_string('dataset', 'cifar10', 'datasset: cifar10/100 or svhn')
 flags.DEFINE_string('set', 'val', 'val or test set to evaluate')
 flags.DEFINE_string('attack', 'deepfool', 'adversarial attack: deepfool, jsma, cw, cw_nnif')
 flags.DEFINE_string('checkpoint_dir', '', 'Checkpoint dir, the path to the saved model architecture and weights')
-
+flags.DEFINE_integer('num_threads', 1, 'number of threads')
 
 # TODO: remove
 flags.DEFINE_string('mode', 'null', 'to bypass pycharm bug')
@@ -182,8 +182,6 @@ nb_classes = y_test.shape[1]
 x     = tf.placeholder(tf.float32, shape=(None, img_rows, img_cols, nchannels), name='x')
 y     = tf.placeholder(tf.float32, shape=(None, nb_classes), name='y')
 
-eval_params = {'batch_size': FLAGS.batch_size}
-
 model = DarkonReplica(scope=ARCH_NAME[FLAGS.dataset], nb_classes=feeder.num_classes, n=5, input_shape=[32, 32, 3])
 preds      = model.get_predicted_class(x)
 logits     = model.get_logits(x)
@@ -269,15 +267,33 @@ if not os.path.exists(os.path.join(attack_dir, 'X_val_adv.npy')):
         'learning_rate': 0.01,
         'initial_const': 0.1
     }
-    fgsm_param = {
+    fgsm_params = {
         'clip_min': 0.0,
         'clip_max': 1.0,
         'eps': 0.1
     }
+    pgd_params = {
+        'clip_min': 0.0,
+        'clip_max': 1.0,
+        'eps': 0.02,
+        'eps_iter': 0.002,
+        'ord': np.inf
+    }
+    ead_params = {
+        'clip_min': 0.0,
+        'clip_max': 1.0,
+        'batch_size': 125,
+        'confidence': 0.8,
+        'learning_rate': 0.01,
+        'initial_const': 0.1,
+        'decision_rule': 'L1'
+    }
     if TARGETED:
         jsma_params.update({'y_target': y_adv})
         cw_params.update({'y_target': y_adv})
-        fgsm_param.update({'y_target': y_adv})
+        fgsm_params.update({'y_target': y_adv})
+        pgd_params.update({'y_target': y_adv})
+        ead_params.update({'y_target': y_adv})
 
     if FLAGS.attack   == 'deepfool':
         attack_params = deepfool_params
@@ -289,8 +305,14 @@ if not os.path.exists(os.path.join(attack_dir, 'X_val_adv.npy')):
         attack_params = cw_params
         attack_class  = CarliniWagnerL2
     elif FLAGS.attack == 'fgsm':
-        attack_params = fgsm_param
+        attack_params = fgsm_params
         attack_class  = FastGradientMethod
+    elif FLAGS.attack == 'pgd':
+        attack_params = pgd_params
+        attack_class  = MadryEtAl
+    elif FLAGS.attack == 'ead':
+        attack_params = ead_params
+        attack_class  = ElasticNetMethod
     else:
         raise AssertionError('Attack {} is not supported'.format(FLAGS.attack))
 
@@ -518,6 +540,7 @@ def collect_influence(q, thread_id):
                 if os.path.isfile(os.path.join(dir, 'scores.npy')):
                     print('scores already exists in {}'.format(os.path.join(dir, 'scores.npy')))
                 else:
+                    start_time = time.time()
                     scores = insp.upweighting_influence_batch(
                         sess=sess,
                         test_indices=[sub_index],
@@ -525,6 +548,8 @@ def collect_influence(q, thread_id):
                         approx_params=approx_params,
                         train_batch_size=train_batch_size,
                         train_iterations=train_iterations)
+                    print('scores calculation time: {} secs. thread_id: {}, global_index: {} (sub: {}), case: {}'
+                          .format(time.time()-start_time, thread_id, global_index, sub_index, case))
                     np.save(os.path.join(dir, 'scores.npy'), scores)
 
                 print('saving image to {}'.format(os.path.join(dir, 'image.npy/png')))

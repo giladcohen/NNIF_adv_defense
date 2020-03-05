@@ -77,7 +77,7 @@ class MyFeederValTest(darkon.InfluenceFeeder):
         else:
             self.train_label = label[train_inds]
 
-        if mini_train_inds is not None:
+        if self.use_mini_train:
             self.mini_train_inds        = mini_train_inds
             self.mini_train_origin_data = data[mini_train_inds]
             self.mini_train_data        = data[mini_train_inds]

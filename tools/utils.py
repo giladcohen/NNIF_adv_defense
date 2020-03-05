@@ -2,11 +2,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.keras.utils.data_utils import get_file
-import scipy.io as sio
 import gdown
 import os
 import numpy as np
+from scipy.spatial.distance import cdist
+from sklearn.linear_model import LogisticRegressionCV
+import matplotlib.pyplot as plt
+from sklearn.metrics import roc_curve, roc_auc_score
+
 
 def load_svhn():
     """ Loads SVHN dataset"""
@@ -47,4 +50,45 @@ def one_hot(indices, depth):
     return ohm
 
 
+# lid of a batch of query points X
+def mle_batch(data, batch, k):
+    data = np.asarray(data, dtype=np.float32)
+    batch = np.asarray(batch, dtype=np.float32)
+
+    k = min(k, len(data)-1)
+    f = lambda v: - k / np.sum(np.log(v/v[-1]))
+    a = cdist(batch, data)
+    a = np.apply_along_axis(np.sort, axis=1, arr=a)[:,1:k+1]
+    a = np.apply_along_axis(f, axis=1, arr=a)
+    return a
+
+def train_lr(X, y):
+    """
+    :param X: the data samples
+    :param y: the labels
+    :return:
+    """
+    lr = LogisticRegressionCV(n_jobs=-1, max_iter=20000, cv=3).fit(X, y)
+    return lr
+
+def compute_roc(y_true, y_pred, plot=False):
+    """
+    :param y_true: ground truth
+    :param y_pred: predictions
+    :param plot:
+    :return:
+    """
+    fpr, tpr, _ = roc_curve(y_true, y_pred)
+    auc_score = roc_auc_score(y_true, y_pred)
+    if plot:
+        plt.figure(figsize=(7, 6))
+        plt.plot(fpr, tpr, color='blue',
+                 label='ROC (AUC = %0.4f)' % auc_score)
+        plt.legend(loc='lower right')
+        plt.title("ROC Curve")
+        plt.xlabel("FPR")
+        plt.ylabel("TPR")
+        plt.show()
+
+    return fpr, tpr, auc_score
 
