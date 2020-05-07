@@ -77,7 +77,10 @@ def lookup(p):
     return X_train[p], y_train[p]
 dataset_train = dataset_train.map(lambda i: tf.py_func(lookup, [i], [tf.float32] * 2))
 
-dataset_train = dataset_train.map(lambda x, y: (random_shift(random_horizontal_flip(x)), y), 4)
+if FLAGS.dataset in ['cifar10', 'cifar100']:
+    dataset_train = dataset_train.map(lambda x, y: (random_shift(random_horizontal_flip(x)), y), 4)
+else:  #svhn
+    dataset_train = dataset_train.map(lambda x, y: (random_shift(x), y), 4)
 dataset_train = dataset_train.batch(FLAGS.batch_size)
 dataset_train = dataset_train.prefetch(16)
 
