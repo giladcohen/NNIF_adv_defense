@@ -1,5 +1,6 @@
 # NNIF_adv_defense
-Detection of adversarial examples using influence functions and nearest neighbors
+Detection of adversarial examples using influence functions and nearest neighbors (CVPR 2020).
+https://arxiv.org/abs/1909.06872
 
 ### Installation
 This repo supports python 2.7
