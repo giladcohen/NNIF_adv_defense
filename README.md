@@ -1,5 +1,5 @@
 # NNIF_adv_defense
-Detection of adversarial examples using influence functions and nearest neighbors (CVPR 2020).
+Detecting Adversarial Samples Using Influence Functions and Nearest Neighbors (CVPR 2020).
 https://arxiv.org/abs/1909.06872
 
 ### Installation
