@@ -3,7 +3,7 @@ configparser==3.7.4
 imageio==2.5.0
 matplotlib==2.2.4
 numpy==1.16.2
-opencv-contrib-python==4.1.0.25
+opencv-contrib-python==4.2.0.32
 pandas==0.24.2
 Pillow==6.0.0
 scikit-image==0.14.2
