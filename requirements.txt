@@ -2,7 +2,7 @@ cleverhans==3.0.1
 configparser==3.7.4
 imageio==2.5.0
 matplotlib==2.2.4
-numpy==1.16.2
+numpy==1.22.0
 opencv-contrib-python==4.1.0.25
 pandas==0.24.2
 Pillow==6.0.0
